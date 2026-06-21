@@ -22,7 +22,6 @@ def generate_acopf_dataset(num_samples, random_seed):
     convergent_generations = 0
     limit_cond = True
 
-    # Konfiguracja
     np.random.seed(random_seed)
     file_name = os.path.join(GEN_DATA_DIR, "your_file.csv")
 
