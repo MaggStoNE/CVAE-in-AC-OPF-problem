@@ -1,0 +1,128 @@
+import pandapower as pp
+import pandapower.networks as pn
+import numpy as np
+import pandas as pd
+import os
+from pandapower.converter.matpower.from_mpc import from_mpc
+
+# DIRECTORIES:
+# Directory where you want to save generated data:
+GEN_DATA_DIR = r"C:\Users\mial0\Desktop"
+# Directory with PGLib test systems' models (have to download them first
+# from https://github.com/power-grid-lib/pglib-opf):
+TEST_SYSTEMS_DIR = r"C:\test_systems"
+
+# Number of data samples you want:
+SAMP_NUM = 10
+
+#!! When generating data for 300 bus model remember to
+# uncomment ADDITIONAL RELAXATION OF RESTRICTIONS FOR 300-BUS TEST CASE segment:
+
+def generate_acopf_dataset(num_samples, random_seed):
+    convergent_generations = 0
+    limit_cond = True
+
+    # Konfiguracja
+    np.random.seed(random_seed)
+    file_name = os.path.join(GEN_DATA_DIR, "your_file.csv")
+
+    # PANDAS MODELS
+    net = pn.case14()
+    net = pn.case_ieee30()
+    net = pn.case300()
+
+    # PG-LIB MODELS
+    net = from_mpc(os.path.join(TEST_SYSTEMS_DIR, "pglib_opf_case57_ieee.m"), f_hz=60)
+    net = from_mpc(os.path.join(TEST_SYSTEMS_DIR, "pglib_opf_case118_ieee.m"), f_hz=60)
+    net = from_mpc(os.path.join(TEST_SYSTEMS_DIR, "pglib_opf_case1354_pegase.m"), f_hz=60)
+    net = from_mpc(os.path.join(TEST_SYSTEMS_DIR, "pglib_opf_case2869_pegase.m"), f_hz=60)
+
+    base_p_mw = net.load.p_mw.copy()
+    base_q_mvar = net.load.q_mvar.copy()
+
+    header_sample = {'sample_id': 0, 'total_cost': 0.0}
+    for j in range(len(net.load)):
+        header_sample[f'load_p_{j}'] = 0.0
+        header_sample[f'load_q_{j}'] = 0.0
+    for j in range(len(net.bus)):
+        header_sample[f'bus_v_pu_{j}'] = 0.0
+        header_sample[f'bus_v_deg_{j}'] = 0.0
+
+    ext_grid_count = len(net.ext_grid)
+    gen_count = len(net.gen)
+    for j in range(ext_grid_count + gen_count):
+        header_sample[f'gen_p_{j}'] = 0.0
+        header_sample[f'gen_q_{j}'] = 0.0
+
+    pd.DataFrame(columns=header_sample.keys()).to_csv(file_name, index=False, sep=";", decimal=",", mode='w')
+
+
+    '''
+# ADDITIONAL RELAXATION OF RESTRICTIONS FOR 300-BUS TEST CASE
+    net.bus['min_vm_pu'] = 0.92
+    net.bus['max_vm_pu'] = 1.08
+    '''
+
+
+    while limit_cond:
+        scale = np.random.uniform(0.8, 1.2, size=len(net.load))
+        net.load.p_mw = base_p_mw * scale
+        net.load.q_mvar = base_q_mvar * scale
+
+        try:
+            pp.runopp(net, init='flat', numba=True)  # init='flat' do flat startu
+
+            if net.OPF_converged:
+
+                v_pu = net.res_bus.vm_pu.values
+                v_deg = net.res_bus.va_degree.values
+
+                gen_p = np.concatenate([net.res_ext_grid.p_mw.values, net.res_gen.p_mw.values])
+                gen_q = np.concatenate([net.res_ext_grid.q_mvar.values, net.res_gen.q_mvar.values])
+
+                total_cost = net.res_cost
+
+                sample = {
+                    'sample_id': convergent_generations,
+                    'total_cost': total_cost
+                }
+
+                for j in range(len(net.load)):
+                    sample[f'load_p_{j}'] = net.load.p_mw.iloc[j]
+                    sample[f'load_q_{j}'] = net.load.q_mvar.iloc[j]
+
+                for j in range(len(v_pu)):
+                    sample[f'bus_v_pu_{j}'] = v_pu[j]
+                    sample[f'bus_v_deg_{j}'] = v_deg[j]
+
+                for j in range(len(gen_p)):
+                    sample[f'gen_p_{j}'] = gen_p[j]
+                    sample[f'gen_q_{j}'] = gen_q[j]
+
+                df_single_row = pd.DataFrame([sample])
+
+                df_single_row.to_csv(file_name, index=False, sep=";", decimal=",", mode='a', header=False)
+                # ------------------------------
+
+                convergent_generations = convergent_generations + 1
+                if convergent_generations > num_samples - 1:    limit_cond=False
+                print(f"\nSuccessfully saved {convergent_generations} convergent instances.")
+
+        except pp.optimal_powerflow.OPFNotConverged:
+            continue
+
+def dynamic_gen_q_relaxation(q_margin_percent, q_base_buffer, net):
+    if not net.gen.empty:
+        net.gen = net.gen.fillna({'min_q_mvar': 0.0, 'max_q_mvar': 0.0})
+
+        gen_q_size = net.gen[['min_q_mvar', 'max_q_mvar']].abs().max(axis=1)
+
+        dynamic_margin_gen = (gen_q_size * q_margin_percent) + q_base_buffer
+
+        net.gen['min_q_mvar'] = net.gen['min_q_mvar'] - dynamic_margin_gen
+        net.gen['max_q_mvar'] = net.gen['max_q_mvar'] + dynamic_margin_gen
+
+
+if __name__ == "__main__":
+    print("Starting data generation...")
+    generate_acopf_dataset(num_samples=SAMP_NUM, random_seed=67)
