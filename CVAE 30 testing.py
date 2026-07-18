@@ -11,7 +11,7 @@ from time import perf_counter
 
 #DIRECTORIES:
 # Directory with generated data:
-GEN_DATA_FILE_DIR = r"C:\gen_data\14bus_data.csv"
+GEN_DATA_FILE_DIR = r"C:\gen_data\30bus_data.csv"
 # Directory where the model weights + scalers are saved:
 BEST_MODEL_DIR = r"C:\best_model"
 # System model:
