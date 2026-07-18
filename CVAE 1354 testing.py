@@ -18,7 +18,7 @@ BEST_MODEL_DIR = r"C:\best_model"
 # Directory with PGLib models:
 PGLIB_MODELS_DIR = r"C:\PGLib_models"
 # System model:
-cvae_model = from_mpc(os.path.join(PGLIB_MODELS_DIR, 'pglib_opf_case1354_pegase.m'), f_hz=60)
+cvae_model = from_mpc(os.path.join(PGLIB_MODELS_DIR, 'pglib_opf_case1354_pegase.m'), f_hz=50)
 net = cvae_model
 
 print("Preliminary OPF to establish res_* table...")
